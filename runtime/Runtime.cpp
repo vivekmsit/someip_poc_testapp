@@ -505,7 +505,7 @@ bool Runtime::handleUdpData(int masterUdpSocket) {
 
 bool Runtime::sendPeriodicMessages() {
     sendMultiCastTimeMessage();
-    sendTcpMessage(destinationAddress_, 30508, "hello world TCP message from Linux Machine");
-    sendUdpMessage(destinationAddress_, 30498, "hello world UDP message from Linux Machine");
+    sendTcpMessage(destinationAddress_, 30509, "hello world TCP message from Linux Machine");
+    sendUdpMessage(destinationAddress_, 30499, "hello world UDP message from Linux Machine");
     return true;
 }

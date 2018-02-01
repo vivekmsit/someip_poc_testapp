@@ -46,7 +46,7 @@ private:
 
     bool mainLoopThread();
 
-    bool initMultiCastTimeConnection(int portNumber);
+    bool initMultiCastTimeSocket(std::string multiCastAddress, int portNumber);
 
     bool sendMultiCastTimeMessage();
 
@@ -54,11 +54,15 @@ private:
 
     int createMasterUdpSocket(int portNumber);
 
+    int createMultiCastReceiverSocket(std::string multiCastAddress, int portNumber);
+
     bool handleTcpConnectionRequest(int fd);
 
     bool handleTcpData(int fd);
 
     bool handleUdpData(int fd);
+
+    bool handleMultiCastData(int fd);
 
     bool sendPeriodicMessages();
 
@@ -68,7 +72,7 @@ private:
     std::vector<struct pollfd> managedPollFds;
     std::vector<struct pollfd> pendingPollFds;
     std::map<int, std::function<bool(int)>> handlersMap;
-    struct sockaddr_in multiCastAddress;
+    struct sockaddr_in multiCastAddress_;
     int multiCastSocketFd;
     std::string destinationAddress_;
 };

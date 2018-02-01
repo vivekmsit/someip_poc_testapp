@@ -22,6 +22,7 @@ void Runtime::serverThreadFunction() {
 
 void Runtime::clientThreadFunction() {
     std::cout << "Runtime::clientThreadFunction() start" << std::endl;
+    initMultiCastTimeSocket("224.244.224.246", 30491);
     while (!stopThreads) {
         sendPeriodicMessages();
         std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -236,7 +237,7 @@ bool Runtime::sendUdpMessage(std::string destinationAddress, int portNumber, std
     return true;
 }
 
-bool Runtime::initMultiCastTimeConnection(int portNumber) {
+bool Runtime::initMultiCastTimeSocket(std::string multiCastAddress, int portNumber) {
     std::cout << "Runtime::initMulticastUdpConnection() start" << std::endl;
     /* set up socket */
     multiCastSocketFd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -245,24 +246,24 @@ bool Runtime::initMultiCastTimeConnection(int portNumber) {
                   << std::string(strerror(errno)) << std::endl;
         return false;
     }
-    bzero((char *) &multiCastAddress, sizeof(multiCastAddress));
-    multiCastAddress.sin_family = AF_INET;
-    multiCastAddress.sin_port = htons(portNumber);
-    multiCastAddress.sin_addr.s_addr = inet_addr("224.244.224.245");
+    bzero((char *) &multiCastAddress_, sizeof(multiCastAddress_));
+    multiCastAddress_.sin_family = AF_INET;
+    multiCastAddress_.sin_port = htons(portNumber);
+    multiCastAddress_.sin_addr.s_addr = inet_addr(multiCastAddress.c_str());
     std::cout << "Runtime::initMulticastUdpConnection() end" << std::endl;
     return true;
 }
 
 bool Runtime::sendMultiCastTimeMessage() {
-    char message[50];
+    char message[100];
     time_t t = time(0);
-    socklen_t addressLength = sizeof(multiCastAddress);
+    socklen_t addressLength = sizeof(multiCastAddress_);
     std::cout << "Runtime::sendMultiCastMessage() start" << std::endl;
-    sprintf(message, "time is %-24.24s", ctime(&t));
+    sprintf(message, "time of linux machine is %-24.24s", ctime(&t));
     std::cout <<
               "Runtime::sendMultiCastMessage(), sending multiCast message: " << message << std::endl;
     ssize_t cnt = sendto(multiCastSocketFd, message, sizeof(message), 0,
-                         (struct sockaddr *) &multiCastAddress, addressLength);
+                         (struct sockaddr *) &multiCastAddress_, addressLength);
     if (cnt < 0) {
         std::cout << "error Inside Runtime::sendMultiCastMessage() function, sendto() failed, error: "
                   << std::string(strerror(errno)) << std::endl;
@@ -348,12 +349,58 @@ int Runtime::createMasterUdpSocket(int portNumber) {
     return masterUdpSocket;
 }
 
+int Runtime::createMultiCastReceiverSocket(std::string multiCastAddress, int portNumber) {
+    struct sockaddr_in addr;
+    int fd;
+    struct ip_mreq mreq;
+    u_int yes = 1;
+
+    std::cout << "Runtime::createMultiCastReceiverSocket() start" << std::endl;
+    /* create what looks like an ordinary UDP socket */
+    if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        std::cout << "error Inside Runtime::createMultiCastReceiverSocket() function, socket() call failed, error: "
+                  << std::string(strerror(errno)) << std::endl;
+        return 0;
+    }
+
+    /* allow multiple sockets to use the same PORT number */
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes)) < 0) {
+        std::cout << "error Inside Runtime::createMultiCastReceiverSocket() function, setsockopt() call failed, error: "
+                  << std::string(strerror(errno)) << std::endl;
+        return 0;
+    }
+
+    /* set up destination address */
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY); /* N.B.: differs from sender */
+    addr.sin_port = htons(portNumber);
+
+    /* bind to receive address */
+    if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+        std::cout << "error Inside Runtime::createMultiCastReceiverSocket() function, bind() call failed, error: "
+                  << std::string(strerror(errno)) << std::endl;
+        return 0;
+    }
+
+    /* use setsockopt() to request that the kernel join a multicast group */
+    mreq.imr_multiaddr.s_addr = inet_addr(multiCastAddress.c_str());
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
+    if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
+        std::cout << "error Inside Runtime::createMultiCastReceiverSocket() function, setsockopt() call failed, error: "
+                  << std::string(strerror(errno)) << std::endl;
+        return 0;
+    }
+    std::cout << "Runtime::createMultiCastReceiverSocket() end" << std::endl;
+    return fd;
+}
+
 bool Runtime::mainLoopThread() {
     std::cout << "Runtime::mainLoopThread() start" << std::endl;
 
     int masterTcpSocket = createMasterTcpSocket(30509);
     int masterUdpSocket = createMasterUdpSocket(30499);
-    initMultiCastTimeConnection(30490);
+    int multiCastReceiverSocket = createMultiCastReceiverSocket("224.244.224.245", 30490);
 
     struct pollfd pfd1;
     pfd1.fd = masterTcpSocket;
@@ -371,8 +418,16 @@ bool Runtime::mainLoopThread() {
     handlersMap[masterUdpSocket] = std::bind(&Runtime::handleUdpData, this,
                                              placeholders::_1);
 
+    struct pollfd pfd3;
+    pfd3.fd = multiCastReceiverSocket;
+    pfd3.revents = 0;
+    pfd3.events = POLLIN;
+    managedPollFds.push_back(pfd3);
+    handlersMap[multiCastReceiverSocket] = std::bind(&Runtime::handleMultiCastData, this,
+                                                     placeholders::_1);
+
     std::cout << "Runtime::mainLoopThread(), Waiting for TCP and UDP connections" << std::endl;
-    while (managedPollFds.size() > 0) {
+    while (!managedPollFds.empty()) {
         std::cout << " MainLoop::mainLoopThread blocked on polling" << std::endl;
         int numReadyFileDescriptors = ::poll(&(managedPollFds[0]),
                                              (nfds_t) managedPollFds.size(),
@@ -500,6 +555,26 @@ bool Runtime::handleUdpData(int masterUdpSocket) {
                   << std::string(strerror(errno)) << std::endl;
     }
     std::cout << "Runtime::handleUdpData() end" << std::endl;
+    return true;
+}
+
+bool Runtime::handleMultiCastData(int multiCastReceiverSocket) {
+    struct sockaddr_in multiCastServerAddress;
+    socklen_t addressLength = sizeof(multiCastServerAddress);
+    ssize_t receivedLength;
+    unsigned char buf[2048];
+    std::cout << "Runtime::handleMultiCastData() start" << std::endl;
+    receivedLength = recvfrom(multiCastReceiverSocket, buf, 2048, 0, (struct sockaddr *) &multiCastServerAddress,
+                              &addressLength);
+    std::cout << "Runtime::handleMultiCastData(), received " << receivedLength << " bytes" << std::endl;
+    if (receivedLength >= 0) {
+        buf[receivedLength] = 0;
+        std::cout << "Inside Runtime::handleMultiCastData() function, received message: " << buf << std::endl;
+    } else {
+        std::cout << "error Inside Runtime::handleMultiCastData() function, recvfrom() failed, error: "
+                  << std::string(strerror(errno)) << std::endl;
+    }
+    std::cout << "Runtime::handleMultiCastData() end" << std::endl;
     return true;
 }
 

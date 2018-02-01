@@ -6,6 +6,7 @@
 // Created by VSharma on 1/5/2018.
 //
 #include <iostream>
+#include <utility>
 #include <fcntl.h>
 #include "Runtime.h"
 
@@ -32,7 +33,7 @@ void Runtime::clientThreadFunction() {
 
 bool Runtime::init(std::string destinationAddress) {
     std::cout << "Runtime::init() start" << std::endl;
-    destinationAddress_ = destinationAddress;
+    destinationAddress_ = std::move(destinationAddress);
     m_serverThread = std::thread(&Runtime::serverThreadFunction, this);
     m_clientThread = std::thread(&Runtime::clientThreadFunction, this);
     std::cout << "Runtime::init() end" << std::endl;
@@ -47,8 +48,8 @@ bool Runtime::deInit() {
 }
 
 bool
-Runtime::sendMultiCastMessage(std::string broadCastAddress, int portNumber, std::string message) {
-    struct sockaddr_in multiAddress;
+Runtime::sendMultiCastMessage(std::string broadCastAddress, uint16_t portNumber, std::string message) {
+    struct sockaddr_in multiAddress{0};
     int multiFd;
 
     std::cout << "Runtime::sendMultiCastMessage() start, broadcast address: " << broadCastAddress << " portNumber: "
@@ -83,12 +84,12 @@ Runtime::sendMultiCastMessage(std::string broadCastAddress, int portNumber, std:
     return true;
 }
 
-bool Runtime::sendTcpMessage(std::string destinationAddress, int portNumber, std::string message) {
+bool Runtime::sendTcpMessage(std::string destinationAddress, uint16_t portNumber, std::string message) {
     std::cout <<
               "Runtime::sendTcpMessage() start, destination: " << destinationAddress << " portNumber:" << portNumber
               << std::endl;
     int sock = 0;
-    struct sockaddr_in serv_addr;
+    struct sockaddr_in serv_addr{0};
     char buffer[1024] = {0};
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         std::cout << "error Inside Runtime::sendTcpMessage(), socket() call failed, error: "
@@ -171,12 +172,11 @@ bool Runtime::sendTcpMessage(std::string destinationAddress, int portNumber, std
     return true;
 }
 
-bool Runtime::sendUdpMessage(std::string destinationAddress, int portNumber, std::string message) {
+bool Runtime::sendUdpMessage(std::string destinationAddress, uint16_t portNumber, std::string message) {
     int sockfd;
     socklen_t serverlen;
-    struct sockaddr_in serveraddr;
+    struct sockaddr_in serveraddr{0};
     struct hostent *server;
-    char buffer[1024];
 
     std::cout << "Runtime::sendUdpMessage() start, destination: " << destinationAddress << " portNumber: " << portNumber
               << std::endl;
@@ -211,7 +211,7 @@ bool Runtime::sendUdpMessage(std::string destinationAddress, int portNumber, std
     bzero((char *) &serveraddr, sizeof(serveraddr));
     serveraddr.sin_family = AF_INET;
     bcopy(server->h_addr,
-          (char *) &serveraddr.sin_addr.s_addr, server->h_length);
+          (char *) &serveraddr.sin_addr.s_addr, static_cast<size_t>(server->h_length));
     serveraddr.sin_port = htons(portNumber);
 
     /* send the message to the server */
@@ -237,7 +237,7 @@ bool Runtime::sendUdpMessage(std::string destinationAddress, int portNumber, std
     return true;
 }
 
-bool Runtime::initMultiCastTimeSocket(std::string multiCastAddress, int portNumber) {
+bool Runtime::initMultiCastTimeSocket(std::string multiCastAddress, uint16_t portNumber) {
     std::cout << "Runtime::initMulticastUdpConnection() start" << std::endl;
     /* set up socket */
     multiCastSocketFd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -256,7 +256,7 @@ bool Runtime::initMultiCastTimeSocket(std::string multiCastAddress, int portNumb
 
 bool Runtime::sendMultiCastTimeMessage() {
     char message[100];
-    time_t t = time(0);
+    time_t t = time(nullptr);
     socklen_t addressLength = sizeof(multiCastAddress_);
     std::cout << "Runtime::sendMultiCastMessage() start" << std::endl;
     sprintf(message, "time of linux machine is %-24.24s", ctime(&t));
@@ -275,10 +275,10 @@ bool Runtime::sendMultiCastTimeMessage() {
 }
 
 
-int Runtime::createMasterTcpSocket(int portNumber) {
+int Runtime::createMasterTcpSocket(uint16_t portNumber) {
     int opt = 1;
     int masterTcpSocket;
-    struct sockaddr_in tcpServerAddress;
+    struct sockaddr_in tcpServerAddress = {0};
 
     std::cout << "Runtime::createMasterTcpSocket() start" << std::endl;
 
@@ -321,8 +321,8 @@ int Runtime::createMasterTcpSocket(int portNumber) {
     return masterTcpSocket;
 }
 
-int Runtime::createMasterUdpSocket(int portNumber) {
-    struct sockaddr_in udpServerAddress;
+int Runtime::createMasterUdpSocket(uint16_t portNumber) {
+    struct sockaddr_in udpServerAddress = {0};
     int masterUdpSocket;
     std::cout << "Runtime::createMasterUdpSocket() start" << std::endl;
 
@@ -349,10 +349,10 @@ int Runtime::createMasterUdpSocket(int portNumber) {
     return masterUdpSocket;
 }
 
-int Runtime::createMultiCastReceiverSocket(std::string multiCastAddress, int portNumber) {
-    struct sockaddr_in addr;
+int Runtime::createMultiCastReceiverSocket(std::string multiCastAddress, uint16_t portNumber) {
+    struct sockaddr_in addr = {0};
     int fd;
-    struct ip_mreq mreq;
+    struct ip_mreq mreq = {0};
     u_int yes = 1;
 
     std::cout << "Runtime::createMultiCastReceiverSocket() start" << std::endl;
@@ -402,7 +402,7 @@ bool Runtime::mainLoopThread() {
     int masterUdpSocket = createMasterUdpSocket(30499);
     int multiCastReceiverSocket = createMultiCastReceiverSocket("224.244.224.245", 30490);
 
-    struct pollfd pfd1;
+    struct pollfd pfd1 = {0};
     pfd1.fd = masterTcpSocket;
     pfd1.revents = 0;
     pfd1.events = POLLIN;
@@ -410,7 +410,7 @@ bool Runtime::mainLoopThread() {
     handlersMap[masterTcpSocket] = std::bind(&Runtime::handleTcpConnectionRequest, this,
                                              placeholders::_1);
 
-    struct pollfd pfd2;
+    struct pollfd pfd2{0};
     pfd2.fd = masterUdpSocket;
     pfd2.revents = 0;
     pfd2.events = POLLIN;
@@ -418,7 +418,7 @@ bool Runtime::mainLoopThread() {
     handlersMap[masterUdpSocket] = std::bind(&Runtime::handleUdpData, this,
                                              placeholders::_1);
 
-    struct pollfd pfd3;
+    struct pollfd pfd3{0};
     pfd3.fd = multiCastReceiverSocket;
     pfd3.revents = 0;
     pfd3.events = POLLIN;
@@ -465,7 +465,7 @@ bool Runtime::mainLoopThread() {
             std::cout << " MainLoop::mainLoopThread poll error error: " << std::string(strerror(errno)) << std::endl;
         }
 
-        if (pendingPollFds.size() > 0) {
+        if (!pendingPollFds.empty()) {
             for (auto pollFd : pendingPollFds) {
                 managedPollFds.push_back(pollFd);
             }
@@ -479,12 +479,12 @@ bool Runtime::mainLoopThread() {
 
 bool Runtime::handleTcpConnectionRequest(int fd) {
     int new_socket;
-    struct sockaddr_in clientAddress;
+    struct sockaddr_in clientAddress = {0};
     int addrlen = sizeof(clientAddress);
     std::cout <<
               "Runtime::handleTcpConnectionRequest() start" << std::endl;
     if ((new_socket = accept(fd, (struct sockaddr *) &clientAddress,
-                             (socklen_t *) &addrlen)) < 0) {
+                             &addrlen)) < 0) {
         std::cout << "error Inside Runtime::handleTcpConnectionRequest() function, accept() failed, error: "
                   << std::string(strerror(errno)) << std::endl;
         return false;
@@ -494,7 +494,7 @@ bool Runtime::handleTcpConnectionRequest(int fd) {
     std::cout << "Runtime::handleTcpConnectionRequest(), New connection , socket fd is: " << new_socket << ",ip is :"
               << inet_ntoa(clientAddress.sin_addr) << " and port is: " << ntohs(clientAddress.sin_port) << std::endl;
 
-    struct pollfd pfd;
+    struct pollfd pfd = {0};
     pfd.fd = new_socket;
     pfd.revents = 0;
     pfd.events = POLLIN;
@@ -507,13 +507,13 @@ bool Runtime::handleTcpConnectionRequest(int fd) {
 bool Runtime::handleTcpData(int fd) {
     bool status = false;
     ssize_t valread = 0;
-    struct sockaddr_in clientAddress;
+    struct sockaddr_in clientAddress = {0};
     int addrlen = sizeof(clientAddress);
     char buffer[1025];  //data buffer of 1K
     std::cout << "Runtime::handleTcpData() start" << std::endl;
     if ((valread = read(fd, buffer, 1024)) == 0) {
         //Somebody disconnected , get his details and print
-        getpeername(fd, (struct sockaddr *) &clientAddress, (socklen_t *) &addrlen);
+        getpeername(fd, (struct sockaddr *) &clientAddress, &addrlen);
         std::cout << "Host disconnected , ip: " << inet_ntoa(clientAddress.sin_addr) << ", port: "
                   << ntohs(clientAddress.sin_port) << std::endl;
 
@@ -539,7 +539,7 @@ bool Runtime::handleTcpData(int fd) {
 }
 
 bool Runtime::handleUdpData(int masterUdpSocket) {
-    struct sockaddr_in clientAddress;
+    struct sockaddr_in clientAddress{0};
     socklen_t addressLength = sizeof(clientAddress);
     ssize_t receivedLength;
     unsigned char buf[2048];
@@ -559,7 +559,7 @@ bool Runtime::handleUdpData(int masterUdpSocket) {
 }
 
 bool Runtime::handleMultiCastData(int multiCastReceiverSocket) {
-    struct sockaddr_in multiCastServerAddress;
+    struct sockaddr_in multiCastServerAddress = {0};
     socklen_t addressLength = sizeof(multiCastServerAddress);
     ssize_t receivedLength;
     unsigned char buf[2048];

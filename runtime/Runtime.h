@@ -32,11 +32,11 @@ public:
 
     bool deInit();
 
-    bool sendMultiCastMessage(std::string destinationAddress, int portNumber, std::string message);
+    bool sendMultiCastMessage(std::string destinationAddress, uint16_t portNumber, std::string message);
 
-    bool sendTcpMessage(std::string destinationAddress, int portNumber, std::string message);
+    bool sendTcpMessage(std::string destinationAddress, uint16_t portNumber, std::string message);
 
-    bool sendUdpMessage(std::string destinationAddress, int portNumber, std::string message);
+    bool sendUdpMessage(std::string destinationAddress, uint16_t portNumber, std::string message);
 
 private:
 
@@ -46,15 +46,15 @@ private:
 
     bool mainLoopThread();
 
-    bool initMultiCastTimeSocket(std::string multiCastAddress, int portNumber);
+    bool initMultiCastTimeSocket(std::string multiCastAddress, uint16_t portNumber);
 
     bool sendMultiCastTimeMessage();
 
-    int createMasterTcpSocket(int portNumber);
+    int createMasterTcpSocket(uint16_t portNumber);
 
-    int createMasterUdpSocket(int portNumber);
+    int createMasterUdpSocket(uint16_t portNumber);
 
-    int createMultiCastReceiverSocket(std::string multiCastAddress, int portNumber);
+    int createMultiCastReceiverSocket(std::string multiCastAddress, uint16_t portNumber);
 
     bool handleTcpConnectionRequest(int fd);
 

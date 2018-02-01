@@ -28,7 +28,16 @@ int main(int argc, char *argv[]) {
             std::cout << "Runtime::init() failed" << std::endl;
         }
     }
+
     cv.wait(lk, [&] { return is_ready; });
+    if (instance) {
+        bool status = instance->deInit();
+        if (status) {
+            std::cout << "Runtime::deInit() successful" << std::endl;
+        } else {
+            std::cout << "Runtime::deInit() failed" << std::endl;
+        }
+    }
     printf("End of main(), Condition Variable notified");
     return 0;
 }
